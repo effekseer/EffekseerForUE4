@@ -13,6 +13,17 @@ namespace Effekseer
 class Material;
 
 }
+USTRUCT(BlueprintType)
+struct FEffekseerUniformProperty
+{
+	GENERATED_USTRUCT_BODY();
+
+	UPROPERTY(VisibleAnywhere)
+	FString Name;
+
+	UPROPERTY(VisibleAnywhere)
+	int Count;
+};
 
 UCLASS()
 class EFFEKSEER_API UEffekseerMaterial 
@@ -28,6 +39,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	UMaterial* Material = nullptr;
+
+	UPROPERTY(VisibleAnywhere)
+	TArray<FEffekseerUniformProperty> Uniforms;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(Category = ImportSettings, VisibleAnywhere)
