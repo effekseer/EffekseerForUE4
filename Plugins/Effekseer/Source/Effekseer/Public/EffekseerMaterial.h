@@ -35,6 +35,29 @@ struct FEffekseerUniformProperty
 	int Count;
 };
 
+UENUM(BlueprintType)
+enum class EAlphaBlendType : uint8
+{
+	Opacity = 0,
+	Blend = 1,
+	Add = 2,
+	Sub = 3,
+	Mul = 4,
+};
+
+USTRUCT()
+struct EFFEKSEER_API FEffekseerMaterialElement
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditInstanceOnly)
+	UMaterialInstance* Material = nullptr;
+
+	UPROPERTY(EditInstanceOnly)
+	EAlphaBlendType AlphaBlend = EAlphaBlendType::Blend;
+};
+
 UCLASS()
 class EFFEKSEER_API UEffekseerMaterial 
 	: public UObject
@@ -47,8 +70,11 @@ private:
 	void ReleaseMaterial();
 public:
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditInstanceOnly)
 	UMaterial* Material = nullptr;
+
+	UPROPERTY(EditInstanceOnly)
+	TArray<FEffekseerMaterialElement> MaterialElements;
 
 	UPROPERTY(VisibleAnywhere)
 	TArray<FEffekseerUniformProperty> Uniforms;

@@ -25,9 +25,15 @@
 #include "EffekseerMaterial/efkMat.Library.h"
 #include "EffekseerMaterial/efkMat.TextExporter.h"
 #include "NativeEffekseerMaterialContext.h"
+#include "Materials/MaterialInstance.h"
 #include <map>
 #include <memory>
 #include <functional>
+#include "Factories/MaterialInstanceConstantFactoryNew.h"
+
+#include "AssetToolsModule.h"
+#include "IAssetTools.h"
+#include "Materials/MaterialInstanceConstant.h"
 
 class ConvertedNode
 {
@@ -521,7 +527,19 @@ UObject* UEffekseerMaterialFactory::FactoryCreateBinary(
 	// Start impoprting
 	FEditorDelegates::OnAssetPreImport.Broadcast(this, InClass, InParent, InName, Type);
 
-	UEffekseerMaterial* assetEfkMat = NewObject<UEffekseerMaterial>(InParent, InClass, FName(InName), Flags);
+	UEffekseerMaterial* assetEfkMat = Cast<UEffekseerMaterial>(FindObject<UEffekseerMaterial>(InParent, *InName.ToString()));
+
+	if (assetEfkMat == nullptr)
+	{
+		assetEfkMat = NewObject<UEffekseerMaterial>(InParent, InClass, FName(InName), Flags);
+
+		// Add defaults
+		FEffekseerMaterialElement e1, e2;
+		e1.AlphaBlend = EAlphaBlendType::Blend;
+		e2.AlphaBlend = EAlphaBlendType::Add;
+		assetEfkMat->MaterialElements.Add(e1);
+		assetEfkMat->MaterialElements.Add(e2);
+	}
 
 	if (assetEfkMat)
 	{
@@ -538,22 +556,24 @@ UObject* UEffekseerMaterialFactory::FactoryCreateBinary(
 	retAssets.Add(assetEfkMat);
 
 	{
-		UPackage* package = CreatePackage(NULL, *(InParent->GetFName().ToString() + TEXT("_M")));
+		// Create package
+		UPackage* package = CreatePackage(NULL, *(InParent->GetFName().ToString() + TEXT("_Mat/") + InName.ToString()));
 
 		auto MaterialFactory = NewObject<UMaterialFactoryNew>();
-		UMaterial* targetMaterial = (UMaterial*)MaterialFactory->FactoryCreateNew(UMaterial::StaticClass(), package, FName(*(InName.ToString() + TEXT("_M"))), RF_Standalone | RF_Public, NULL, GWarn);
-		FAssetRegistryModule::AssetCreated(targetMaterial);
+		UMaterial* originalMaterial = (UMaterial*)MaterialFactory->FactoryCreateNew(UMaterial::StaticClass(), package, FName(*(InName.ToString() + TEXT("_M"))), RF_Standalone | RF_Public, NULL, GWarn);
+		FAssetRegistryModule::AssetCreated(originalMaterial);
 
 #if ENGINE_MINOR_VERSION >= 23 // TODO Check correct version
-		targetMaterial->AssetImportData = NewObject<UAssetImportData>(targetMaterial, UAssetImportData::StaticClass());
-		targetMaterial->AssetImportData->Update(CurrentFilename);
+		originalMaterial->AssetImportData = NewObject<UAssetImportData>(originalMaterial, UAssetImportData::StaticClass());
+		originalMaterial->AssetImportData->Update(CurrentFilename);
 #endif
 		package->FullyLoad();
 		package->SetDirtyFlag(true);
-		
-		auto native = NativeEffekseerMaterialContext::Load(Buffer, BufferEnd - Buffer, TCHAR_TO_ANSI(*targetMaterial->GetPathName()));
 
-		LoadData(targetMaterial, native);
+		
+		auto native = NativeEffekseerMaterialContext::Load(Buffer, BufferEnd - Buffer, TCHAR_TO_ANSI(*originalMaterial->GetPathName()));
+
+		LoadData(originalMaterial, native);
 
 		for (auto u : native->result.Uniforms)
 		{
@@ -570,11 +590,29 @@ UObject* UEffekseerMaterialFactory::FactoryCreateBinary(
 			assetEfkMat->Textures.Add(prop);
 		}
 
-		assetEfkMat->Material = targetMaterial;
+		assetEfkMat->Material = originalMaterial;
 		assetEfkMat->StoreData(Buffer, BufferEnd - Buffer);
 		assetEfkMat->LoadMaterial(Buffer, BufferEnd - Buffer, nullptr);
 		assetEfkMat->ReassignSearchingMaps();
-		retAssets.Add(targetMaterial);
+		retAssets.Add(originalMaterial);
+
+		// generate instances for blends
+		for (auto& e : assetEfkMat->MaterialElements)
+		{
+			IAssetTools& AssetTools = FModuleManager::Get().LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+			UMaterialInstanceConstantFactoryNew* factory = NewObject<UMaterialInstanceConstantFactoryNew>();
+			factory->InitialParent = originalMaterial;
+			const FString ParentName = InParent->GetName() + "_Mat/";
+			FString OutAssetName;
+			FString OutPackageName;
+			AssetTools.CreateUniqueAssetName(*(ParentName + InName.ToString() + TEXT("_Inst")), TEXT(""), OutPackageName, OutAssetName);
+			UMaterialInstanceConstant* NewMaterial = Cast<UMaterialInstanceConstant>(AssetTools.CreateAsset(OutAssetName, ParentName, UMaterialInstanceConstant::StaticClass(), factory));
+			NewMaterial->BasePropertyOverrides.BlendMode = EBlendMode::BLEND_Additive;
+			NewMaterial->BasePropertyOverrides.bOverride_BlendMode = true;
+			NewMaterial->PostEditChange();
+
+			retAssets.Add(NewMaterial->GetOutermost());
+		}
 	}
 
 	// notify finished
@@ -594,15 +632,61 @@ UObject* UEffekseerMaterialFactory::FactoryCreateBinary(
 
 bool UEffekseerMaterialFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilenames)
 {
-	return true;
+	UEffekseerMaterial* asset = Cast<UEffekseerMaterial>(Obj);
+	if (asset && asset->AssetImportData)
+	{
+		asset->AssetImportData->ExtractFilenames(OutFilenames);
+		return true;
+	}
+	return false;
 }
 
 void UEffekseerMaterialFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths)
 {
-
+	UEffekseerMaterial* asset = Cast<UEffekseerMaterial>(Obj);
+	if (asset && ensure(NewReimportPaths.Num() == 1))
+	{
+		asset->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
+	}
 }
 
 EReimportResult::Type UEffekseerMaterialFactory::Reimport(UObject* Obj)
 {
+	UEffekseerMaterial* asset = Cast<UEffekseerMaterial>(Obj);
+	if (!asset)
+	{
+		return EReimportResult::Failed;
+	}
+
+	const FString Filename = asset->AssetImportData->GetFirstFilename();
+	
+	if (!Filename.Len() || IFileManager::Get().FileSize(*Filename) == INDEX_NONE)
+	{
+		return EReimportResult::Failed;
+	}
+
+	EReimportResult::Type Result = EReimportResult::Failed;
+
+	if (UFactory::StaticImportObject(
+		asset->GetClass(),
+		asset->GetOuter(),
+		*asset->GetName(),
+		RF_Public | RF_Standalone,
+		*Filename,
+		asset,
+		this))
+	{
+		if (asset->GetOuter())
+		{
+			asset->GetOuter()->MarkPackageDirty();
+		}
+		else
+		{
+			asset->MarkPackageDirty();
+		}
+
+		return EReimportResult::Succeeded;
+	}
+
 	return EReimportResult::Failed;
 }

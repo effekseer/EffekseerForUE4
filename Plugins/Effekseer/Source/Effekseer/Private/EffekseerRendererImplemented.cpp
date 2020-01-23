@@ -319,6 +319,51 @@ bool FModelMaterialRenderProxy::GetParentTextureValue(const FMaterialParameterIn
 }
 
 
+void ExtractTextures(const Effekseer::Effect* effect,
+	const Effekseer::NodeRendererBasicParameter* param,
+	std::array<Effekseer::TextureData*, ::Effekseer::TextureSlotMax>& textures,
+	int32_t& textureCount)
+{
+	if (param->MaterialType == Effekseer::RendererMaterialType::File)
+	{
+		auto materialParam = param->MaterialParameterPtr;
+
+		textureCount = 0;
+		std::array<Effekseer::TextureData*, ::Effekseer::TextureSlotMax> textures;
+
+		if (materialParam->MaterialTextures.size() > 0)
+		{
+			textureCount = Effekseer::Min(materialParam->MaterialTextures.size(), ::Effekseer::UserTextureSlotMax);
+
+			for (size_t i = 0; i < textureCount; i++)
+			{
+				if (materialParam->MaterialTextures[i].Type == 1)
+				{
+					if (materialParam->MaterialTextures[i].Index >= 0)
+					{
+						textures[i] = effect->GetNormalImage(materialParam->MaterialTextures[i].Index);
+					}
+					else
+					{
+						textures[i] = nullptr;
+					}
+				}
+				else
+				{
+					if (materialParam->MaterialTextures[i].Index >= 0)
+					{
+						textures[i] = effect->GetColorImage(materialParam->MaterialTextures[i].Index);
+					}
+					else
+					{
+						textures[i] = nullptr;
+					}
+				}
+			}
+		}
+	}
+}
+
 	ModelRenderer::ModelRenderer(RendererImplemented* renderer)
 		: m_renderer(renderer)
 	{
@@ -387,38 +432,7 @@ bool FModelMaterialRenderProxy::GetParentTextureValue(const FMaterialParameterIn
 			int32_t textureCount = 0;
 			std::array<Effekseer::TextureData*, ::Effekseer::TextureSlotMax> textures;
 
-			if (materialParam->MaterialTextures.size() > 0)
-			{
-				textureCount = Effekseer::Min(materialParam->MaterialTextures.size(), ::Effekseer::UserTextureSlotMax);
-
-				auto effect = param.EffectPointer;
-
-				for (size_t i = 0; i < textureCount; i++)
-				{
-					if (materialParam->MaterialTextures[i].Type == 1)
-					{
-						if (materialParam->MaterialTextures[i].Index >= 0)
-						{
-							textures[i] = effect->GetNormalImage(materialParam->MaterialTextures[i].Index);
-						}
-						else
-						{
-							textures[i] = nullptr;
-						}
-					}
-					else
-					{
-						if (materialParam->MaterialTextures[i].Index >= 0)
-						{
-							textures[i] = effect->GetColorImage(materialParam->MaterialTextures[i].Index);
-						}
-						else
-						{
-							textures[i] = nullptr;
-						}
-					}
-				}
-			}
+			ExtractTextures(parameter.EffectPointer, parameter.BasicParameterPtr, textures, textureCount);
 
 			if (textureCount > 0)
 			{
