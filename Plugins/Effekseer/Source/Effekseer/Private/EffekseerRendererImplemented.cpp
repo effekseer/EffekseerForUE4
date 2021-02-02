@@ -84,6 +84,7 @@ namespace EffekseerRendererUE4
 		const UEffekseerMaterial* const effekseerMaterial_;
 		bool isModel_ = false;
 		Effekseer::CullingType cullingType_;
+		float effectScale_;
 	public:
 
 		FLinearColor ModelUV;
@@ -94,11 +95,12 @@ namespace EffekseerRendererUE4
 
 		
 
-		FFileMaterialRenderProxy(const FMaterialRenderProxy* InParent, const UEffekseerMaterial* effekseerMaterial, float* uniformBufferPtr, int32_t uniformCount, bool isModel, Effekseer::CullingType cullingType)
+		FFileMaterialRenderProxy(const FMaterialRenderProxy* InParent, const UEffekseerMaterial* effekseerMaterial, float* uniformBufferPtr, int32_t uniformCount, bool isModel, Effekseer::CullingType cullingType, float effectScale)
 			: FCompatibleMaterialRenderProxy(InParent)
 			, effekseerMaterial_(effekseerMaterial)
 			, isModel_(isModel)
 			, cullingType_(cullingType)
+			, effectScale_(effectScale)
 		{
 			Textures.fill(nullptr);
 
@@ -186,6 +188,12 @@ namespace EffekseerRendererUE4
 
 	bool FFileMaterialRenderProxy::GetParentScalarValue(const MaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const
 	{
+		if (ParameterInfo.Name == FName(TEXT("EffectScale")))
+		{
+			*OutValue = effectScale_;
+			return true;
+		}
+
 		if (ParameterInfo.Name == FName(TEXT("Model")))
 		{
 			*OutValue = isModel_ ? 1.0f : 0.0f;
@@ -894,7 +902,13 @@ namespace EffekseerRendererUE4
 			{
 				auto uniformOffset = m_currentShader->GetParameterGenerator()->PixelUserUniformOffset;
 				auto buffer = static_cast<uint8_t*>(m_currentShader->GetPixelConstantBuffer()) + uniformOffset;
-				auto newProxy = new FFileMaterialRenderProxy(proxy, m_currentShader->GetEffekseerMaterial(), reinterpret_cast<float*>(buffer), m_currentShader->GetEffekseerMaterial()->Uniforms.Num(), false, m_renderState->GetActiveState().CullingType);
+				auto newProxy = new FFileMaterialRenderProxy(
+					proxy, 
+					m_currentShader->GetEffekseerMaterial(), reinterpret_cast<float*>(buffer), 
+					m_currentShader->GetEffekseerMaterial()->Uniforms.Num(), 
+					false, 
+					m_renderState->GetActiveState().CullingType, 
+					reunderingUserData->EffectScale);
 
 				newProxy->Textures = textures_;
 
@@ -1272,7 +1286,8 @@ namespace EffekseerRendererUE4
 						reinterpret_cast<float*>(buffer),
 						m_currentShader->GetEffekseerMaterial()->Uniforms.Num(),
 						true,
-						m_renderState->GetActiveState().CullingType);
+						m_renderState->GetActiveState().CullingType,
+						reunderingUserData->EffectScale);
 
 					newProxy->ModelUV = uv;
 					newProxy->ModelColor = color;

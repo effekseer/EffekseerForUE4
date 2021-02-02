@@ -828,6 +828,7 @@ void UEffekseerEffect::LoadEffect(const uint8_t* data, int32_t size, const TCHAR
 
 			auto renderingData = Effekseer::MakeRefPtr <EffekseerRendererUE4::EffekseerRenderingUserData > ();
 			renderingData->Key = mkey;
+			renderingData->EffectScale = node->GetEffect()->GetMaginification();
 			node->SetRenderingUserData(renderingData);
 		}
 

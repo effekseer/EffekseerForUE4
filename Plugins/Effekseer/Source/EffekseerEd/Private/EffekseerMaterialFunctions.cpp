@@ -184,6 +184,62 @@ public:
 	}
 };
 
+class ConvertedNodeDepthFade : public ConvertedNode
+{
+private:
+	std::shared_ptr<EffekseerMaterial::Node> effekseerNode_;
+	UMaterialExpressionMaterialFunctionCall* expression_ = nullptr;
+	UMaterialExpressionConstant* expression1_ = nullptr;
+
+public:
+	ConvertedNodeDepthFade(UMaterial* material, std::shared_ptr<NativeEffekseerMaterialContext> effekseerMaterial, std::shared_ptr<EffekseerMaterial::Node> effekseerNode)
+		: effekseerNode_(effekseerNode)
+	{
+		expression_ = NewObject<UMaterialExpressionMaterialFunctionCall>(material);
+		material->Expressions.Add(expression_);
+
+		FStringAssetReference assetPath("/Effekseer/MaterialFunctions/EfkDepthFade.EfkDepthFade");
+		UMaterialFunction* func = Cast<UMaterialFunction>(assetPath.TryLoad());
+		expression_->SetMaterialFunction(func);
+
+		if (effekseerMaterial->material->GetConnectedPins(effekseerNode->InputPins[effekseerNode_->GetInputPinIndex("FadeDistance")]).size() == 0)
+		{
+			expression1_ = NewObject<UMaterialExpressionConstant>(material);
+			material->Expressions.Add(expression1_);
+			expression1_->R = effekseerNode->Properties[effekseerNode_->GetInputPinIndex("FadeDistance")]->Floats[0];
+			expression_->GetInput(0)->Expression = expression1_;
+		}
+	}
+
+	UMaterialExpression* GetExpression() const override
+	{
+		return expression_;
+	}
+
+	
+	UMaterialExpression* GetExpressions(int32_t ind) const override
+	{
+		if (ind == 0)
+			return expression_;
+		if (ind == 1)
+			return expression1_;
+		return nullptr;
+	}
+
+	int32_t GetExpressionCount() const
+	{
+		return 2;
+	}
+
+	void Connect(int targetInd, std::shared_ptr<ConvertedNode> outputNode, int32_t outputNodePinIndex) override
+	{
+		if (targetInd == effekseerNode_->GetInputPinIndex("FadeDistance"))
+		{
+			outputNode->GetNodeOutputConnector(outputNodePinIndex).Apply(*expression_->GetInput(0));
+		}
+	}
+};
+
 class ConvertedNodeFresnel : public ConvertedNode
 {
 private:
@@ -792,6 +848,7 @@ UMaterial* CreateUE4MaterialFromEffekseerMaterial(const std::shared_ptr<NativeEf
 	nodeFactories["PixelNormalWS"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodePixelNormalWS>>();
 	nodeFactories["VertexColor"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeVertexColor>>();
 	nodeFactories["ObjectScale"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeObjectScale>>();
+	nodeFactories["EffectScale"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeEffectScale>>();
 
 	nodeFactories["CustomData1"] = std::make_shared< ConvertedNodeFactoryNormalNode<ConvertedNodeCustomData1>>();
 	nodeFactories["CustomData2"] = std::make_shared< ConvertedNodeFactoryNormalNode<ConvertedNodeCustomData2>>();
@@ -801,6 +858,8 @@ UMaterial* CreateUE4MaterialFromEffekseerMaterial(const std::shared_ptr<NativeEf
 	nodeFactories["Fresnel"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeFresnel>>();
 	nodeFactories["Rotator"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeRotator>>();
 	nodeFactories["PolarCoords"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodePolarCoords>>();
+
+	nodeFactories["DepthFade"] = std::make_shared<ConvertedNodeFactoryNormalNode<ConvertedNodeDepthFade>>();
 
 	std::map<uint64_t, std::shared_ptr<ConvertedNode>> convertedNodes;
 

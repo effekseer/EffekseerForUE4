@@ -14,6 +14,7 @@ namespace EffekseerRendererUE4
 		virtual ~EffekseerRenderingUserData() = default;
 
 		EffekseerEffectMaterialKey Key;
+		float EffectScale = 1.0f;
 
 		virtual bool Equal(const RenderingUserData* rhs) const
 		{
